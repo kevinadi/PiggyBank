@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+
+<body>
+
+<br>
+<textarea id="sqlcmd" rows="10" cols="50">
+SELECT * FROM TEST;
+</textarea>
+<br/>
+<button type="button" onclick="javascript:sqlite3.wexec('sqlcmd')">Do query (worker)</button>
+<button type="button" onclick="javascript:sqlite3.savedb()">Save database</button>
+<br/>
+<div id="res">
+</div>
+
+<script type="text/javascript" src="sql.js"></script>
+
+<script>
+
+var SQL = function(url) {
+    this.res = null
+    this.worker = new Worker("worker.sql.js")
+    this.loaddb(url)
+}
+SQL.prototype.loaddb = function(url){
+    url = url || "./PiggyBank.sql3";
+    var xhr = new XMLHttpRequest;
+    var self = this;
+    xhr.open("GET", url, true);
+    xhr.responseType = "arraybuffer";
+    xhr.onload = function() {
+        var uInt8Array = new Uint8Array(xhr.response);
+        self.worker.postMessage({
+            action:"open",
+            buffer:xhr.response
+        });
+    }
+    xhr.send()
+}
+SQL.prototype.wexec = function(sqlcmd) {
+    var self = this;
+    var sql = (document.getElementById(sqlcmd)).value;
+    this.worker.onmessage = function(e) { console.log(e.data.results); self.res = e.data.results[0]; self.show() };
+    this.worker.postMessage({action:"exec",sql:sql});
+}
+SQL.prototype.exec = function(sqlcmd) {
+    var self = this;
+    sqlcmd = sqlcmd || "select * from test"
+    this.worker.onmessage = function(e) { console.log(e.data.results); self.wres = e.data.results[0] };
+    this.worker.postMessage({action:"exec",sql:sqlcmd});
+}
+SQL.prototype.savedb = function() {
+    this.worker.onmessage = function(event) {
+        var arraybuff = event.data.buffer;
+        var blob = new Blob([arraybuff]);
+        var url = window.URL.createObjectURL(blob);
+        window.location = url;
+    };
+    this.worker.postMessage({action:"export"});
+}
+SQL.prototype.show = function() {
+    var div = document.getElementById("res");
+    var toTable = function(x) { return "<tr>" + x.map( function(y){ return "<td>" + y + "</td>" } ).join("") + "</tr>" }
+    var html = "<table border=1>";
+    html += "<tr><th>" + this.res.columns.join("</th><th>") + "</th></tr>";
+    html += this.res.values.map(toTable).join("") + "</table>";
+    div.innerHTML = html;
+}
+var sqlite3 = new SQL()
+
+</script>
+
+</body>
+
+</html>
